@@ -1,0 +1,15 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "baseUrl": "./",
+        "module": "commonjs",
+        "experimentalDecorators": true,
+        "typeRoots": ["../node_modules/@types"],
+        "paths": {
+            "@/*": ["../src/*"],
+            "_u/*": ["../src/utils/*"]
+        }
+    },
+    "exclude": ["../node_modules"],
+    "include": ["./**/*.ts"]
+}
