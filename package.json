@@ -10,6 +10,7 @@
     "scripts": {
         "dev": "tsc --watch & ts-cleaner --watch",
         "prod": "tsc -p ./tsconfig.prod.json --watch & ts-cleaner --watch",
+        "build": "tsc -p ./tsconfig.prod.json & ts-cleaner",
         "test": "mocha",
         "test:debug": "mocha --inspect-brk",
         "patch": "npm version patch && npm publish",
