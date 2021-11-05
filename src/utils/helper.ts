@@ -1,8 +1,9 @@
-import UA from 'user-agents'
-import send, { SendOptions } from './send'
 import { promisify } from 'util'
 import { customAlphabet } from 'nanoid'
 import { h64 } from 'xxhashjs'
+import UA from 'user-agents'
+//
+import send from './send'
 
 const ua = new UA({
     platform: 'Win32',
@@ -168,29 +169,6 @@ export async function asyncForEach<T>(
     for (let index = 0; index < array.length; index++) {
         await cb(array[index], index, array)
     }
-}
-
-const proxyServer = 'http://127.0.0.1:5010'
-
-// 随机查询代理
-export async function getProxy(options: SendOptions = { timeout: 2000 }) {
-    let { body } = await send.get(`${proxyServer}/get`, null, options)
-
-    if (body) {
-        let { proxy, https } = JSON.parse(body.toString())
-
-        return (https ? 'https:' : 'http:') + proxy
-    } else {
-        throw new Error('No proxy available')
-    }
-}
-
-// 删除指定代理
-export async function delProxy(
-    proxy: string,
-    options: SendOptions = { timeout: 2000 }
-) {
-    await send.get(`${proxyServer}/delete/?proxy=${proxy}`, null, options)
 }
 
 // arrary.groupBy
