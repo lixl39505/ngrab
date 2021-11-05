@@ -1,4 +1,5 @@
 export * from './core/crawler'
 export * from './core/spider'
 export * from './core/http'
+export { send, SendOptions } from './utils/send'
 export { userAgent, hash, octetId } from './utils/helper'
