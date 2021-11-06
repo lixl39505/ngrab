@@ -123,6 +123,7 @@ export async function send(config: SendOptions): Promise<SendMessage> {
         protocol = proxyObj.protocol
         hostname = proxyObj.hostname
         port = proxyObj.port
+        pathname = `${urlObj.protocol}//${urlObj.host}${pathname}` // full target url
     } else {
         protocol = urlObj.protocol
         hostname = urlObj.hostname
