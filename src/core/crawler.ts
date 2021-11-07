@@ -199,7 +199,7 @@ export class Crawler<C> extends Spider<C> {
             group = groupBy<Req>(pendings, (v) => new URL(v.url).hostname)
 
         Object.entries<Req[]>(group).forEach(([hostname, list]) => {
-            // 并发间隔控制
+            // 支持并发请求不同域名url
             let crawling = this._hostCrawling[hostname]
             if (!crawling) {
                 // lock
@@ -214,7 +214,7 @@ export class Crawler<C> extends Spider<C> {
             }
         })
     }
-    // 添加爬取任务
+    // 添加爬取任务(尾递归调用)
     pushTasks(reqs: Req[], immediate: Boolean, cb?: Function) {
         let req = reqs.shift()
         if (!req) {
