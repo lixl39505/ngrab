@@ -2,7 +2,7 @@ import proxyquire from 'proxyquire'
 import sinon, { SinonSpy } from 'sinon'
 import cheerio from 'cheerio'
 // lib
-import Crawler, { CrawlerOptions } from '@/core/crawler'
+import { Crawler, CrawlerOptions } from '@/core/crawler'
 import { once, userAgent, hash } from '_u/helper'
 
 // types

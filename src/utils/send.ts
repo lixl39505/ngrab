@@ -36,13 +36,19 @@ export interface SendMessage {
 
 // 发送网络请求
 async function request(adapter, options): Promise<SendMessage> {
+    let timeoutClock: NodeJS.Timeout
+
     return new Promise(function (resolve, reject) {
         let req = adapter.request(
             options,
+            // response
             function (res: IncomingMessage & FollowResponse) {
                 let receives = [],
                     stream: Stream
-
+                // 清理timeout
+                if (timeoutClock) {
+                    clearTimeout(timeoutClock)
+                }
                 // 响应失败
                 if (res.statusCode !== 200) {
                     let err: SendError = new Error(
@@ -81,14 +87,18 @@ async function request(adapter, options): Promise<SendMessage> {
                 })
             }
         )
-        req.on('timeout', () => {
+        // 请求超时(res到达时间)
+        let timeout = () => {
             req.abort()
             reject(
                 new Error(
                     `${req.host}${req.path} timeout after ${options.timeout}ms`
                 )
             )
-        })
+        }
+        // socket连接建立超时
+        req.on('timeout', timeout)
+        // 任意错误产生
         req.on('error', function (e) {
             reject(e)
         })
@@ -98,6 +108,10 @@ async function request(adapter, options): Promise<SendMessage> {
         }
         // request end
         req.end()
+        // timeout
+        if (options.timeout) {
+            timeoutClock = setTimeout(timeout, options.timeout)
+        }
     })
 }
 
