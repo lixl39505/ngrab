@@ -92,7 +92,7 @@ async function request(adapter, options): Promise<SendMessage> {
             req.abort()
             reject(
                 new Error(
-                    `${req.host}${req.path} timeout after ${options.timeout}ms`
+                    `${options.host}${options.path} timeout after ${options.timeout}ms`
                 )
             )
         }
@@ -143,13 +143,14 @@ export async function send(config: SendOptions): Promise<SendMessage> {
         hostname = urlObj.hostname
         port = urlObj.port
     }
-    // http[s] options
+
     let options: RequestOptions = {
             protocol,
             hostname,
             port,
             path: pathname, // 路径(带query)
             method: config.method || 'GET',
+            timeout: config.timeout,
         },
         adapter = protocol === 'https:' ? https : http,
         retry = config.maxRetry
