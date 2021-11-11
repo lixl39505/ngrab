@@ -89,12 +89,11 @@ async function request(adapter, options): Promise<SendMessage> {
         )
         // 请求超时(res到达时间)
         let timeout = () => {
+            if (timeoutClock) {
+                clearTimeout(timeoutClock)
+            }
             req.abort()
-            reject(
-                new Error(
-                    `${options.host}${options.path} timeout after ${options.timeout}ms`
-                )
-            )
+            reject(new Error(`timeout of ${options.timeout}ms exceeded`))
         }
         // socket连接建立超时
         req.on('timeout', timeout)
