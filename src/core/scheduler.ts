@@ -12,7 +12,7 @@ export class Scheduler {
     private _todos = [] // 待执行任务队列
     private _runningCount = 0 // 执行中任务数量
     private _doneCount = 0 // 已完成任务数量
-    private _round = 0 // 轮次
+    private _round = 0 // 轮次
 
     constructor(options) {
         Object.entries(options).forEach(([k, v]) => {
@@ -22,7 +22,7 @@ export class Scheduler {
         })
 
         if (this._maxConcurrency < 1) {
-            throw new Error('maxConcurrency必须为大于0的整数')
+            throw new Error('maxConcurrency must be an integer greater than 0')
         }
     }
     // 添加任务(自动执行)

@@ -1,37 +1,37 @@
 import { AsyncSeriesHook } from 'tapable'
 import minimatch from 'minimatch'
 //
-import { Req, Res } from './http'
+import { Req, Res, DefaultContext } from './http'
 
 // 生命周期
-export interface Hooks<C> {
-    request: AsyncSeriesHook<[Req, C]>
-    download: AsyncSeriesHook<[Req, Res, C]>
-    fail: AsyncSeriesHook<[Req, Error, C]>
+export interface Hooks<Context> {
+    request: AsyncSeriesHook<[Req, Context]>
+    download: AsyncSeriesHook<[Req, Res, Context]>
+    fail: AsyncSeriesHook<[Req, Error, Context]>
 }
 // 路由参数
-export interface RouterOptions<C> {
+export interface RouterOptions<Context> {
     protocal?: string // 协议
     host?: string // 主机
     port?: string // 端口
     path?: string // 路径
-    success?: (req: Req, res: Res, context: C) => Promise<void> // 成功回调
-    fail?: (req: Req, err: Error, context: C) => Promise<void> // 失败回调
+    success?: (req: Req, res: Res, context: Context) => Promise<void> // 成功回调
+    fail?: (req: Req, err: Error, context: Context) => Promise<void> // 失败回调
 }
 
 // 路由
 //// 1. url匹配
 //// 2. request生命周期钩子
-export class Router<C> {
+export class Router<Context = DefaultContext> {
     // 因子
     protected _protocol = ''
     protected _host = ''
     protected _port = ''
     protected _path = ''
     // 状态
-    hooks: Hooks<C>
+    hooks: Hooks<Context>
 
-    constructor(options: RouterOptions<C> = {}) {
+    constructor(options: RouterOptions<Context> = {}) {
         this._protocol = options.protocal || ''
         this._host = options.host || ''
         this._port = options.port || ''
@@ -79,14 +79,14 @@ export class Router<C> {
         return false
     }
     // add request hook
-    request(name: string, fn: (req: Req, context: C) => Promise<void>) {
+    request(name: string, fn: (req: Req, context: Context) => Promise<void>) {
         this.hooks.request.tapPromise(name, fn)
         return this
     }
     // add download hook
     download(
         name: string,
-        fn: (req: Req, res: Res, context: C) => Promise<void>
+        fn: (req: Req, res: Res, context: Context) => Promise<void>
     ) {
         this.hooks.download.tapPromise(name, fn)
         return this
@@ -94,7 +94,7 @@ export class Router<C> {
     // add fail hook
     fail(
         name: string,
-        fn: (req: Req, err: Error, context: C) => Promise<void>
+        fn: (req: Req, err: Error, context: Context) => Promise<void>
     ) {
         this.hooks.fail.tapPromise(name, fn)
         return this

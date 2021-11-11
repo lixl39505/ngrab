@@ -1,10 +1,11 @@
 import urlJoin from 'url-join'
 //
 import { Router, RouterOptions } from './router'
-import { Req, Res } from './http'
+import { Req, Res, DefaultContext } from './http'
 
 // 爬虫参数
-export interface SpiderOptions<C> extends RouterOptions<C> {
+export interface SpiderOptions<Context = DefaultContext>
+    extends RouterOptions<Context> {
     // 请求参数
     request?: {
         timeout?: number // 超时时间
@@ -13,11 +14,11 @@ export interface SpiderOptions<C> extends RouterOptions<C> {
 
 // 爬虫
 //// 1. 爬虫常用逻辑封装
-export class Spider<C> extends Router<C> {
+export class Spider<Context = DefaultContext> extends Router<Context> {
     // 因子
-    protected _request: SpiderOptions<C>['request']
+    protected _request: SpiderOptions<Context>['request']
 
-    constructor(options: SpiderOptions<C> = {}) {
+    constructor(options: SpiderOptions<Context> = {}) {
         super(options)
         // 默认超时时间 2s
         this._request = options.request || {

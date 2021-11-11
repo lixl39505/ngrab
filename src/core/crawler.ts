@@ -3,12 +3,12 @@ import path from 'path'
 //
 import { BloomFilter } from 'bloom-filters'
 //
-import { Req, Res, ProxyConfig } from './http'
+import { Req, Res, DefaultContext, ProxyConfig } from './http'
 import { send, debounce, groupBy, asyncForEach } from '../utils/helper'
 import { Scheduler, SchedulerOptions } from './scheduler'
 import { Spider, SpiderOptions } from './spider'
 
-// 待爬取地址
+// 待爬取地址
 type Links = string | string[] | Req[]
 export type Proxy = string | ProxyConfig | ((req: Req) => Promise<ProxyConfig>)
 
@@ -18,7 +18,9 @@ export interface BloomOptions {
     falseRate?: number // 错误率
 }
 // 配置参数
-export interface CrawlerOptions<C> extends SchedulerOptions, SpiderOptions<C> {
+export interface CrawlerOptions<Context = DefaultContext>
+    extends SchedulerOptions,
+        SpiderOptions<Context> {
     // 爬虫名称
     name?: string
     // 频率控制
@@ -32,13 +34,13 @@ export interface CrawlerOptions<C> extends SchedulerOptions, SpiderOptions<C> {
     // 请求代理配置
     proxy?: Proxy
     // 请求上下文参数
-    context?: () => C
+    context?: () => Context
 }
 
 // 爬虫簇
 //// 1. url管理
 //// 2. 并发管理(请求发起)
-export class Crawler<C> extends Spider<C> {
+export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 因子
     protected _name: string
     protected _cacheRoot: string
@@ -48,7 +50,7 @@ export class Crawler<C> extends Spider<C> {
     protected _maxConcurrency: number
     protected _maxRequests: number
     protected _proxy: (req: Req) => Promise<ProxyConfig>
-    protected _context: () => C
+    protected _context: () => Context
     // 内部状态
     private _cacheDir: string
     private _scheduler: Scheduler
@@ -60,13 +62,13 @@ export class Crawler<C> extends Spider<C> {
     private _hostCrawling: {
         [k: string]: boolean
     } = {} // 域名:是否正在爬取
-    private _spiders: Array<Spider<C>> = [] // 爬虫列表
-    private _useSet: Set<Spider<C> | SpiderOptions<C>> = new Set() // use缓存
+    private _spiders: Array<Spider<Context>> = [] // 爬虫列表
+    private _useSet: Set<Spider<Context> | SpiderOptions<Context>> = new Set() // use缓存
     // 内部方法
     private _saveBloom: Function
     private _saveTodoList: Function
 
-    constructor(options: CrawlerOptions<C> = {}) {
+    constructor(options: CrawlerOptions<Context> = {}) {
         super(options)
         // map
         this._name = options.name
@@ -226,7 +228,7 @@ export class Crawler<C> extends Spider<C> {
         setTimeout(
             () => {
                 let routes = this._spiders.filter((v) => v.match(req)),
-                    context: C,
+                    context: Context,
                     me = this
 
                 if (this._context) {
@@ -319,7 +321,7 @@ export class Crawler<C> extends Spider<C> {
         return this._cacheDir
     }
     // 添加route
-    use(options: Spider<C> | SpiderOptions<C>): Spider<C> {
+    use(options: Spider<Context> | SpiderOptions<Context>): Spider<Context> {
         if (this._useSet.has(options)) {
             return
         }
