@@ -1,13 +1,13 @@
 import { AsyncSeriesHook } from 'tapable'
 import minimatch from 'minimatch'
 //
-import { Req, Res, DefaultContext } from './http'
+import { Req, Res, DefaultContext, BaseContext } from './http'
 
 // 生命周期
 export interface Hooks<Context> {
-    request: AsyncSeriesHook<[Req, Context]>
-    download: AsyncSeriesHook<[Req, Res, Context]>
-    fail: AsyncSeriesHook<[Req, Error, Context]>
+    request: AsyncSeriesHook<[Req, Context & BaseContext]>
+    download: AsyncSeriesHook<[Req, Res, Context & BaseContext]>
+    fail: AsyncSeriesHook<[Req, Error, Context & BaseContext]>
 }
 // 路由参数
 export interface RouterOptions<Context> {
@@ -15,8 +15,16 @@ export interface RouterOptions<Context> {
     host?: string // 主机
     port?: string // 端口
     path?: string // 路径
-    success?: (req: Req, res: Res, context: Context) => Promise<void> // 成功回调
-    fail?: (req: Req, err: Error, context: Context) => Promise<void> // 失败回调
+    success?: (
+        req: Req,
+        res: Res,
+        context: Context & BaseContext
+    ) => Promise<void> // 成功回调
+    fail?: (
+        req: Req,
+        err: Error,
+        context: Context & BaseContext
+    ) => Promise<void> // 失败回调
 }
 
 // 路由
@@ -79,14 +87,21 @@ export class Router<Context = DefaultContext> {
         return false
     }
     // add request hook
-    request(name: string, fn: (req: Req, context: Context) => Promise<void>) {
+    request(
+        name: string,
+        fn: (req: Req, context: Context & BaseContext) => Promise<void>
+    ) {
         this.hooks.request.tapPromise(name, fn)
         return this
     }
     // add download hook
     download(
         name: string,
-        fn: (req: Req, res: Res, context: Context) => Promise<void>
+        fn: (
+            req: Req,
+            res: Res,
+            context: Context & BaseContext
+        ) => Promise<void>
     ) {
         this.hooks.download.tapPromise(name, fn)
         return this
@@ -94,7 +109,11 @@ export class Router<Context = DefaultContext> {
     // add fail hook
     fail(
         name: string,
-        fn: (req: Req, err: Error, context: Context) => Promise<void>
+        fn: (
+            req: Req,
+            err: Error,
+            context: Context & BaseContext
+        ) => Promise<void>
     ) {
         this.hooks.fail.tapPromise(name, fn)
         return this

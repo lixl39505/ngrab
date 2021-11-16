@@ -3,7 +3,7 @@ import path from 'path'
 //
 import { BloomFilter } from 'bloom-filters'
 //
-import { Req, Res, DefaultContext, ProxyConfig } from './http'
+import { Req, Res, DefaultContext, BaseContext, ProxyConfig } from './http'
 import { send, debounce, groupBy, asyncForEach } from '../utils/helper'
 import { Scheduler, SchedulerOptions } from './scheduler'
 import { Spider, SpiderOptions } from './spider'
@@ -50,7 +50,6 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     protected _maxConcurrency: number
     protected _maxRequests: number
     protected _proxy: (req: Req) => Promise<ProxyConfig>
-    protected _context: () => Context
     // 内部状态
     private _cacheDir: string
     private _scheduler: Scheduler
@@ -77,7 +76,6 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._interval = options.interval
         this._maxConcurrency = options.maxConcurrency
         this._maxRequests = options.maxRequests
-        this._context = options.context
 
         // 默认名称
         if (!this._name) {
@@ -130,7 +128,160 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
             fs.writeFileSync(this._todoPath, JSON.stringify(this._todoList))
         })
     }
-    // 开始执行
+    // 执行请求
+    private _apply() {
+        // 爬虫已停止
+        if (this._crawling === false) return
+        // 再无请求
+        let pendings = this._todoList.filter((v) => v._state === 'pending')
+        if (pendings.length <= 0) return
+        // 请求分组，并发执行
+        let group = groupBy<Req>(pendings, (v) => new URL(v.url).hostname)
+        Object.entries<Req[]>(group).forEach(([hostname, list]) => {
+            let crawling = this._hostCrawling[hostname]
+            if (!crawling) {
+                // lock
+                this._hostCrawling[hostname] = true
+                list.forEach((v) => (v._state = 'downloading'))
+
+                this._pushReqs(list, crawling === undefined, () => {
+                    // unlock
+                    this._hostCrawling[hostname] = false
+                    // 递归
+                    this._apply()
+                })
+            }
+        })
+    }
+    // 批量发送请求
+    private _pushReqs(reqs: Req[], immediate: Boolean, cb?: Function) {
+        // 爬虫已停止
+        if (this._crawling === false) return
+
+        // 无间隔（并发）
+        let count = 0
+        if (!this._interval) {
+            return reqs.forEach((v) =>
+                this._pushReq(v, () => {
+                    count++
+                    if (count >= reqs.length) {
+                        cb && cb()
+                    }
+                })
+            )
+        }
+
+        // 带控制间隔（尾递归）
+        let req = reqs.shift()
+        if (!req) {
+            cb && cb()
+            return
+        }
+
+        setTimeout(
+            () => this._pushReq(req, () => this._pushReqs(reqs, false, cb)),
+            immediate
+                ? 0
+                : typeof this._interval === 'function'
+                ? this._interval(req)
+                : this._interval || 0
+        )
+    }
+    // 发送请求
+    private _pushReq(req: Req, cb?: (req: Req, res: Res) => void) {
+        // 爬虫已停止
+        if (this._crawling === false) return
+
+        let routes = this._spiders.filter((v) => v.match(req)),
+            me = this,
+            context = {
+                // 计算url
+                resolveLink(...parts: string[]) {
+                    return me.resolveLink(req.url, ...parts)
+                },
+                // 深度爬取接口
+                followLinks(urls: Links) {
+                    me._followLinks(me.normalizeUrls(urls))
+                },
+            } as Context & BaseContext
+
+        // 默认作为全局route
+        routes.unshift(this)
+
+        this._scheduler.push(async () => {
+            let res: Res
+            // hook:request
+            await asyncForEach(
+                routes,
+                async (v) => await v.hooks.request.promise(req, context)
+            )
+            // start
+            try {
+                // proxy 代理设置
+                if (this._proxy) {
+                    let proxy = await this._proxy(req)
+                    req.proxy = proxy.url
+                    req.maxRetry = proxy.maxRetry || 3
+                }
+                // send
+                let { status, body, headers } = await send(req)
+                res = {
+                    status,
+                    headers,
+                    body: body.toString(),
+                }
+            } catch (err) {
+                // hook:fail 请求失败
+                await asyncForEach(
+                    routes,
+                    async (v) => await v.hooks.fail.promise(req, err, context)
+                )
+            }
+            // done
+            if (res) {
+                // hook:download
+                await asyncForEach(
+                    routes,
+                    async (v) =>
+                        await v.hooks.download.promise(req, res, context)
+                )
+                // end
+                this._commit(req)
+            }
+            // callback
+            if (cb) cb(req, res)
+        })
+    }
+    // 提交已结束请求
+    private _commit(req: Req) {
+        // set bloom-filter
+        if (this._bloomFilter) {
+            this._bloomFilter.add(req.url)
+            this._saveBloom()
+        }
+        // remove from todo-list
+        let idx = this._todoList.findIndex((v) => v.url === req.url)
+        if (idx >= 0) {
+            this._todoList.splice(idx, 1)
+            this._saveTodoList()
+        }
+    }
+    // 添加请求
+    private _followLinks(urls: Req[], immediate: Boolean = false) {
+        // url布隆去重
+        if (this._bloomFilter) {
+            urls = urls.filter((v) => {
+                return this._bloomFilter.has(v.url) === false
+            })
+        }
+        // 加入队列
+        this._todoList.push(...urls)
+        // 消费队列
+        if (immediate) {
+            this._apply()
+        }
+    }
+    // 开始
     run() {
         if (!this._crawling) {
             this._crawling = true
@@ -173,148 +324,28 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
             urls = this.normalizeUrls(this._startUrls)
         }
 
-        this.followLinks(urls, true)
+        this._followLinks(urls, true)
     }
-    // 结束当前爬取
+    // 停止
     stop() {
         this._crawling = false
+        this._hostCrawling = {}
         this._scheduler.clear()
     }
-    // 深度爬取
-    followLinks(urls: Req[], immediate: Boolean = false) {
-        // url布隆去重
-        if (this._bloomFilter) {
-            urls = urls.filter((v) => {
-                return this._bloomFilter.has(v.url) === false
-            })
-        }
-        // 加入队列
-        this._todoList.push(...urls)
-        // 消费队列
-        if (immediate) {
-            this.applyCrawling()
-        }
+    // 休眠
+    sleep(time: number) {
+        if (time <= 0) return
+        // 一段时间后，重新运行
+        this.stop()
+        setTimeout(() => this.run(), time)
     }
-    // 消费todoList
-    applyCrawling() {
-        let pendings = this._todoList.filter((v) => v._state === 'pending'),
-            group = groupBy<Req>(pendings, (v) => new URL(v.url).hostname)
-
-        Object.entries<Req[]>(group).forEach(([hostname, list]) => {
-            // 支持并发请求不同域名url
-            let crawling = this._hostCrawling[hostname]
-            if (!crawling) {
-                // lock
-                this._hostCrawling[hostname] = true
-                list.forEach((v) => (v._state = 'downloading'))
-
-                this.pushTasks(list, crawling === undefined, () => {
-                    // unlock
-                    this._hostCrawling[hostname] = false
-                    this.applyCrawling()
-                })
-            }
-        })
+    // 跳过请求
+    skip(req: Req) {
+        // 
     }
-    // 添加爬取任务(尾递归调用)
-    pushTasks(reqs: Req[], immediate: Boolean, cb?: Function) {
-        let req = reqs.shift()
-        if (!req) {
-            cb && cb()
-            return
-        }
-
-        // 队列间隔控制
-        setTimeout(
-            () => {
-                let routes = this._spiders.filter((v) => v.match(req)),
-                    context: Context,
-                    me = this
-
-                if (this._context) {
-                    context = this._context()
-                }
-
-                // 默认作为全局route
-                routes.unshift(this)
-
-                this._scheduler.push(async () => {
-                    let res: Res
-                    // hook:request
-                    await asyncForEach(
-                        routes,
-                        async (v) => await v.hooks.request.promise(req, context)
-                    )
-                    // start
-                    try {
-                        // proxy 代理设置
-                        if (this._proxy) {
-                            let proxy = await this._proxy(req)
-                            req.proxy = proxy.url
-                            req.maxRetry = proxy.maxRetry || 3
-                        }
-                        // send
-                        let { status, body, headers } = await send(req)
-                        res = {
-                            status,
-                            headers,
-                            body: body.toString(),
-                            // 计算url
-                            resolveLink(...parts: string[]) {
-                                return me.resolveLink(req.url, ...parts)
-                            },
-                            // 深度爬取接口
-                            followLinks(urls: Links) {
-                                me.followLinks(me.normalizeUrls(urls))
-                            },
-                        }
-                    } catch (err) {
-                        // hook:fail 请求失败
-                        await asyncForEach(
-                            routes,
-                            async (v) =>
-                                await v.hooks.fail.promise(req, err, context)
-                        )
-                    }
-                    // todo 区分有效res与无效res
-                    if (res) {
-                        // hook:download
-                        await asyncForEach(
-                            routes,
-                            async (v) =>
-                                await v.hooks.download.promise(
-                                    req,
-                                    res,
-                                    context
-                                )
-                        )
-                        // end
-                        this.commitUrl(req)
-                        // next
-                        this.pushTasks(reqs, false, cb)
-                    }
-                })
-            },
-            immediate
-                ? 0
-                : typeof this._interval === 'function'
-                ? this._interval(req)
-                : this._interval || 0
-        )
-    }
-    // 提交一个url，将其视为已爬取
-    commitUrl(req: Req) {
-        // set bloom-filter
-        if (this._bloomFilter) {
-            this._bloomFilter.add(req.url)
-            this._saveBloom()
-        }
-        // remove from todo-list
-        let idx = this._todoList.findIndex((v) => v.url === req.url)
-        if (idx >= 0) {
-            this._todoList.splice(idx, 1)
-            this._saveTodoList()
-        }
+    // 延迟请求
+    defer(req: Req) {
+        // 
     }
     // 获取缓存目录
     getCacheDir() {
