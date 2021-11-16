@@ -1,7 +1,8 @@
 import urlJoin from 'url-join'
 //
 import { Router, RouterOptions } from './router'
-import { Req, Res, DefaultContext } from './http'
+import { Req, ReqOptions, DefaultContext } from './http'
+import { SendOptions } from '../utils/send'
 
 // 爬虫参数
 export interface SpiderOptions<Context = DefaultContext>
@@ -43,13 +44,13 @@ export class Spider<Context = DefaultContext> extends Router<Context> {
         return urlJoin(origin, pathname, ...parts)
     }
     // 标准化urls
-    normalizeUrls(urls: string | Array<string | Req>): Req[] {
+    normalizeUrls(urls: string | Array<string | SendOptions>): Req[] {
         if (typeof urls === 'string') {
             urls = [urls]
         }
 
         return urls.reduce<Req[]>((acc, v) => {
-            let req: Req = {}
+            let req: ReqOptions = {}
             if (typeof v === 'string') {
                 // 空
                 if (v === '') {
@@ -80,12 +81,9 @@ export class Spider<Context = DefaultContext> extends Router<Context> {
                 delete req.params
             }
             // add runtime state
-            Object.defineProperty(req, '_state', {
-                writable: true,
-                enumerable: false,
-                value: 'pending',
-            })
-            acc.push(req)
+            req.state = 'pending'
+
+            acc.push(new Req(req))
             return acc
         }, [])
     }

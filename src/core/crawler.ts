@@ -3,14 +3,18 @@ import path from 'path'
 //
 import { BloomFilter } from 'bloom-filters'
 //
-import { Req, Res, DefaultContext, BaseContext, ProxyConfig } from './http'
+import {
+    Links,
+    Proxy,
+    Req,
+    Res,
+    DefaultContext,
+    BaseContext,
+    ProxyConfig,
+} from './http'
 import { send, debounce, groupBy, asyncForEach } from '../utils/helper'
 import { Scheduler, SchedulerOptions } from './scheduler'
 import { Spider, SpiderOptions } from './spider'
-
-// 待爬取地址
-type Links = string | string[] | Req[]
-export type Proxy = string | ProxyConfig | ((req: Req) => Promise<ProxyConfig>)
 
 // 布隆配置对象
 export interface BloomOptions {
@@ -125,7 +129,19 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._todoPath = path.join(this._cacheDir, 'todo.json')
         // 存储todo队列
         this._saveTodoList = debounce(200, () => {
-            fs.writeFileSync(this._todoPath, JSON.stringify(this._todoList))
+            fs.writeFileSync(
+                this._todoPath,
+                // 存储关键信息
+                JSON.stringify(
+                    this._todoList.map((v) => ({
+                        retryTimes: v.retryTimes,
+                        url: v.url,
+                        refer: v.refer,
+                        method: v.method,
+                        data: v.data,
+                    }))
+                )
+            )
         })
     }
     // 执行请求
@@ -133,7 +149,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         // 爬虫已停止
         if (this._crawling === false) return
         // 再无请求
-        let pendings = this._todoList.filter((v) => v._state === 'pending')
+        let pendings = this._todoList.filter((v) => v.state === 'pending')
         if (pendings.length <= 0) return
         // 请求分组，并发执行
         let group = groupBy<Req>(pendings, (v) => new URL(v.url).hostname)
@@ -142,7 +158,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
             if (!crawling) {
                 // lock
                 this._hostCrawling[hostname] = true
-                list.forEach((v) => (v._state = 'downloading'))
+                list.forEach((v) => (v.state = 'downloading'))
 
                 this._pushReqs(list, crawling === undefined, () => {
                     // unlock
@@ -193,16 +209,20 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         if (this._crawling === false) return
 
         let routes = this._spiders.filter((v) => v.match(req)),
-            me = this,
             context = {
                 // 计算url
-                resolveLink(...parts: string[]) {
-                    return me.resolveLink(req.url, ...parts)
+                resolveLink: (...parts: string[]) =>
+                    this.resolveLink(req.url, ...parts),
+                // 递归请求
+                followLinks: (urls: Links) => {
+                    let follows = this.normalizeUrls(urls)
+                    // 记录refer
+                    follows.forEach((v) => (v.refer = req.url))
+                    this._followLinks(follows)
                 },
-                // 深度爬取接口
-                followLinks(urls: Links) {
-                    me._followLinks(me.normalizeUrls(urls))
-                },
+                skip: (req: Req) => this.skip(req),
+                defer: (req: Req) => this.defer(req),
+                stop: () => this.stop(),
             } as Context & BaseContext
 
         // 默认作为全局route
@@ -225,11 +245,11 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 }
                 // send
                 let { status, body, headers } = await send(req)
-                res = {
+                res = new Res({
                     status,
                     headers,
-                    body: body.toString(),
-                }
+                    body,
+                })
             } catch (err) {
                 // hook:fail 请求失败
                 await asyncForEach(
@@ -267,15 +287,15 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         }
     }
     // 添加请求
-    private _followLinks(urls: Req[], immediate: Boolean = false) {
+    private _followLinks(reqs: Req[], immediate: Boolean = false) {
         // url布隆去重
         if (this._bloomFilter) {
-            urls = urls.filter((v) => {
+            reqs = reqs.filter((v) => {
                 return this._bloomFilter.has(v.url) === false
             })
         }
         // 加入队列
-        this._todoList.push(...urls)
+        this._todoList.push(...reqs)
         // 消费队列
         if (immediate) {
             this._apply()
@@ -341,11 +361,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     }
     // 跳过请求
     skip(req: Req) {
-        // 
+        this._commit(req)
     }
     // 延迟请求
     defer(req: Req) {
-        // 
+        // 重置为pending并放入队尾
+        req.state = 'pending'
+        this._followLinks([req])
     }
     // 获取缓存目录
     getCacheDir() {

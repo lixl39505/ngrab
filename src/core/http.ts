@@ -1,28 +1,29 @@
 import { SendOptions } from '../utils/send'
+import { Req, ReqOptions } from './req'
+import { Res, ResOptions } from './res'
+
+// re-export
+export { Req, ReqOptions, Res, ResOptions }
 
 // 待爬取地址
-type Links = string | string[] | Req[]
+export type Links = string | string[] | SendOptions[]
 
-// 请求对象
-export interface Req extends SendOptions {
-    _state?: 'pending' | 'downloading'
-}
-
-// 响应对象
-export interface Res {
-    status: number // http-status-code
-    headers: object // http头部
-    body: string // 内容
-}
 // 代理配置对象
 export interface ProxyConfig {
     url: string
     maxRetry?: number
 }
+
+// 代理对象
+export type Proxy = string | ProxyConfig | ((req: Req) => Promise<ProxyConfig>)
+
 // 基础上下文
 export interface BaseContext {
     resolveLink: (...parts: string[]) => string
     followLinks: (urls: Links) => void
+    skip: (req: Req) => void
+    defer: (req: Req) => void
+    stop: () => void
 }
 // 可扩展上下文
 export interface DefaultContext {
