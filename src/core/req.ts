@@ -21,7 +21,7 @@ class Req {
     // headers
     headers: object
     // 状态
-    state: 'pending' | 'downloading'
+    state: 'pending' | 'downloading' | 'failed' | 'download'
     // query params
     params: object
     // proxy

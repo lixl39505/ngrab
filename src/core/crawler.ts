@@ -37,8 +37,8 @@ export interface CrawlerOptions<Context = DefaultContext>
     cacheRoot?: string
     // 请求代理配置
     proxy?: Proxy
-    // 请求上下文参数
-    context?: () => Context
+    // 是否记忆爬取进度
+    remember?: boolean
 }
 
 // 爬虫簇
@@ -54,6 +54,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     protected _maxConcurrency: number
     protected _maxRequests: number
     protected _proxy: (req: Req) => Promise<ProxyConfig>
+    protected _remember: boolean // 是否记忆爬取进度
     // 内部状态
     private _cacheDir: string
     private _scheduler: Scheduler
@@ -63,13 +64,16 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     private _todoPath = '' // 待爬取缓存路径
     private _todoList: Array<Req> = [] // 待爬取队列
     private _hostCrawling: {
-        [k: string]: boolean
-    } = {} // 域名:是否正在爬取
+        [k: string]: boolean // 域名:是否正在爬取
+    } = {}
     private _spiders: Array<Spider<Context>> = [] // 爬虫列表
     private _useSet: Set<Spider<Context> | SpiderOptions<Context>> = new Set() // use缓存
+    private _reqCount: number = 0 // 请求总数
+    private _downloadCount: number = 0 // 成功请求数
+    private _failedCount: number = 0 // 失败请求数
     // 内部方法
     private _saveBloom: Function
-    private _saveTodoList: Function
+    private _saveTodoList = () => {}
 
     constructor(options: CrawlerOptions<Context> = {}) {
         super(options)
@@ -80,7 +84,11 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._interval = options.interval
         this._maxConcurrency = options.maxConcurrency
         this._maxRequests = options.maxRequests
-
+        this._remember = options.remember
+        // 默认记忆爬取进度
+        if (this._remember === undefined) {
+            this._remember = true
+        }
         // 默认名称
         if (!this._name) {
             throw new Error('必须指定crawler的名称')
@@ -128,21 +136,23 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._cacheDir = path.resolve(this._cacheRoot, this._name)
         this._todoPath = path.join(this._cacheDir, 'todo.json')
         // 存储todo队列
-        this._saveTodoList = debounce(200, () => {
-            fs.writeFileSync(
-                this._todoPath,
-                // 存储关键信息
-                JSON.stringify(
-                    this._todoList.map((v) => ({
-                        retryTimes: v.retryTimes,
-                        url: v.url,
-                        refer: v.refer,
-                        method: v.method,
-                        data: v.data,
-                    }))
+        if (this._remember) {
+            this._saveTodoList = debounce(200, () => {
+                fs.writeFileSync(
+                    this._todoPath,
+                    // 存储关键信息
+                    JSON.stringify(
+                        this._todoList.map((v) => ({
+                            retryTimes: v.retryTimes,
+                            url: v.url,
+                            refer: v.refer,
+                            method: v.method,
+                            data: v.data,
+                        }))
+                    )
                 )
-            )
-        })
+            })
+        }
     }
     // 执行请求
     private _apply() {
@@ -207,9 +217,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     private _pushReq(req: Req, cb?: (req: Req, res: Res) => void) {
         // 爬虫已停止
         if (this._crawling === false) return
+        // +1
+        this._reqCount++
 
         let routes = this._spiders.filter((v) => v.match(req)),
             context = {
+                // 请求对象
+                req,
                 // 计算url
                 resolveLink: (...parts: string[]) =>
                     this.resolveLink(req.url, ...parts),
@@ -223,6 +237,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 skip: (req: Req) => this.skip(req),
                 defer: (req: Req) => this.defer(req),
                 stop: () => this.stop(),
+                sleep: (time: number) => this.sleep(time),
             } as Context & BaseContext
 
         // 默认作为全局route
@@ -233,7 +248,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
             // hook:request
             await asyncForEach(
                 routes,
-                async (v) => await v.hooks.request.promise(req, context)
+                async (v) => await v.hooks.request.promise(context)
             )
             // start
             try {
@@ -245,7 +260,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 }
                 // send
                 let { status, body, headers } = await send(req)
-                res = new Res({
+                context.res = new Res({
                     status,
                     headers,
                     body,
@@ -254,25 +269,42 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 // hook:fail 请求失败
                 await asyncForEach(
                     routes,
-                    async (v) => await v.hooks.fail.promise(req, err, context)
+                    async (v) => await v.hooks.failed.promise(err, context)
                 )
             }
-            // done
+            // success
             if (res) {
                 // hook:download
                 await asyncForEach(
                     routes,
-                    async (v) =>
-                        await v.hooks.download.promise(req, res, context)
+                    async (v) => await v.hooks.download.promise(context)
                 )
-                // end
+                // complete
+                req.state = 'download'
+                this._downloadCount++
                 this._commit(req)
+            } else {
+                // 默认skip
+                if (req.state === 'downloading') {
+                    this.skip(req)
+                }
+            }
+            // done
+            if (
+                this._failedCount + this._downloadCount >=
+                this._reqCount + this._todoList.length
+            ) {
+                this.emit('done', {
+                    reqCount: this._reqCount,
+                    downloadCount: this._downloadCount,
+                    failedCount: this._failedCount,
+                })
             }
             // callback
             if (cb) cb(req, res)
         })
     }
-    // 提交已结束请求
+    // 提交请求
     private _commit(req: Req) {
         // set bloom-filter
         if (this._bloomFilter) {
@@ -311,7 +343,6 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
             this._scheduler = new Scheduler({
                 maxConcurrency: this._maxConcurrency || 1,
                 maxRequests: this._maxRequests || Infinity,
-                interval: this._interval || 0,
             })
         }
         // 创建缓存目录
@@ -355,19 +386,31 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 休眠
     sleep(time: number) {
         if (time <= 0) return
-        // 一段时间后，重新运行
+        // 一段时间后再运行
         this.stop()
-        setTimeout(() => this.run(), time)
+        setTimeout(() => {
+            this._crawling = true
+            this._apply()
+        }, time)
     }
-    // 跳过请求
+    // 跳过失败请求
     skip(req: Req) {
+        req.state = 'failed'
+        this._failedCount++
         this._commit(req)
     }
-    // 延迟请求
+    // 延迟失败请求
     defer(req: Req) {
         // 重置为pending并放入队尾
         req.state = 'pending'
+        req.retryTimes++
+        this._failedCount++ // 请求发送过，所以仍视为失败
+        let idx = this._todoList.findIndex((v) => v.url === req.url)
+        if (idx >= 0) {
+            this._todoList.splice(idx, 1)
+        }
         this._followLinks([req])
+        this._saveTodoList()
     }
     // 获取缓存目录
     getCacheDir() {

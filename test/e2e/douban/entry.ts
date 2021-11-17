@@ -3,7 +3,7 @@ import sinon, { SinonSpy } from 'sinon'
 import cheerio from 'cheerio'
 // lib
 import { Crawler, CrawlerOptions } from '@/core/crawler'
-import { once, userAgent, hash } from '_u/helper'
+import { userAgent, hash } from '_u/helper'
 
 // types
 interface dbStub {
@@ -33,16 +33,13 @@ function createCrawler(options: CrawlerOptions<Context>) {
         name: 'douban',
         bloom: false, // 禁用bloom过滤
         interval: () => (Math.random() * 2 + 1) * 1000, // 随机间隔 1~3s
-        context() {
-            return {
-                db: getDB,
-            }
-        },
     }
     var crawler = new CrawlerStub(Object.assign(opts, options))
 
     // random-useragent
-    crawler.hooks.request.tap('headers', (req) => {
+    crawler.request('headers', async (context) => {
+        let { req } = context
+
         Object.assign(req.headers, {
             'Cache-Control': 'no-cache',
             'User-Agent': userAgent(),
@@ -50,10 +47,11 @@ function createCrawler(options: CrawlerOptions<Context>) {
             'Accept-Encoding': 'gzip, deflate, compress', // 目前只支持这3种，其它会乱码
             Connection: 'keep-alive',
         })
+        // db
+        context.db = getDB
+        // stub followLinks
+        followStub = context.followLinks = sinon.fake()
     })
-
-    // stub followLinks
-    followStub = crawler.followLinks = sinon.fake(once(crawler.followLinks))
 
     return crawler
 }
@@ -71,10 +69,9 @@ describe('entry', function () {
             batch: sinon.fake((k, v) => Promise.resolve([name + k, v])),
             put: sinon.fake((k, v) => Promise.resolve([name + k, v])),
         }))
-
         CrawlerStub = proxyquire('@/core/crawler', {
             fs: fsStub,
-        }).default
+        }).Crawler
     })
 
     // top排行榜
@@ -84,8 +81,9 @@ describe('entry', function () {
             }),
             spider = douban.use({
                 path: '/chart',
-                async success(req, res, context) {
-                    let $ = cheerio.load(res.body),
+                async success(context) {
+                    let { res } = context,
+                        $ = cheerio.load(res.body.toString()),
                         dbRank = context.db('rank'),
                         rankList = []
 
@@ -151,7 +149,7 @@ describe('entry', function () {
                         )
 
                         // 电影详情
-                        res.followLinks(rankList.map((v) => v.url))
+                        context.followLinks(rankList.map((v) => v.url))
 
                         // 分类排行榜
                         let root = context.db(),
@@ -161,13 +159,13 @@ describe('entry', function () {
                             function (index) {
                                 let $a = $(this),
                                     url = $a.attr('href'),
-                                    params = new URL(res.resolveLink(url))
+                                    params = new URL(context.resolveLink(url))
                                         .searchParams
 
                                 typeRankMap[params.get('type')] =
                                     params.get('type_name')
 
-                                res.followLinks(
+                                context.followLinks(
                                     `https://movie.douban.com/j/chart/top_list?type=${params.get(
                                         'type'
                                     )}&interval_id=100%3A90&action=&start=20&limit=20`
@@ -180,7 +178,7 @@ describe('entry', function () {
                 },
             })
 
-        spider.download('test', async (req, res, context) => {
+        spider.download('test', async () => {
             try {
                 let dbRank: dbStub = getDB.firstCall.returnValue,
                     dbRoot: dbStub = getDB.secondCall.returnValue
@@ -233,6 +231,85 @@ describe('entry', function () {
             } catch (err) {
                 done(err)
             }
+        })
+
+        douban.run()
+    })
+
+    it('skip', function (done) {
+        var douban = createCrawler({
+            startUrls: [
+                'https://movie.douban.com/subject/25804480/', // 404
+            ],
+            async fail(err: Error, context) {
+                context.skip(context.req)
+                context.req.state.should.eql('failed')
+            },
+        })
+
+        douban.on('done', ({ reqCount, downloadCount, failedCount }) => {
+            reqCount.should.eql(1)
+            downloadCount.should.eql(0)
+            failedCount.should.eql(1)
+
+            done()
+        })
+
+        douban.run()
+    })
+
+    it('defer', function (done) {
+        var douban = createCrawler({
+            startUrls: [
+                'https://movie.douban.com/subject/25860925/', // 404
+            ],
+            async fail(err: Error, context) {
+                let { req } = context
+                // 重试2次后跳过
+                req.retryTimes >= 2 ? context.skip(req) : context.defer(req)
+            },
+        })
+
+        douban.on('done', ({ reqCount, downloadCount, failedCount }) => {
+            reqCount.should.eql(3)
+            downloadCount.should.eql(0)
+            failedCount.should.eql(3)
+
+            done()
+        })
+
+        douban.run()
+    })
+
+    it('sleep', function (done) {
+        this.timeout(20 * 1000) // 20s
+        let startTime = Date.now()
+
+        var douban = createCrawler({
+            startUrls: [
+                'https://movie.douban.com/subject/25860925/', // 404
+            ],
+            async fail(err: Error, context) {
+                let { req } = context
+                // 休息10s后再爬取
+                if (req.retryTimes >= 1) {
+                    context.skip(req)
+                } else {
+                    context.defer(req)
+                    context.sleep(10 * 1000)
+                }
+            },
+        })
+
+        douban.on('done', ({ reqCount, downloadCount, failedCount }) => {
+            reqCount.should.eql(2)
+            downloadCount.should.eql(0)
+            failedCount.should.eql(2)
+
+            var duration = Date.now() - startTime
+            // 至少过了10s
+            duration.should.gte(10 * 1000)
+            done()
         })
 
         douban.run()

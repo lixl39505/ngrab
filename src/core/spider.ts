@@ -21,9 +21,9 @@ export class Spider<Context = DefaultContext> extends Router<Context> {
 
     constructor(options: SpiderOptions<Context> = {}) {
         super(options)
-        // 默认超时时间 2s
+        // 默认超时时间 20s
         this._request = options.request || {
-            timeout: 2000,
+            timeout: 20000,
         }
     }
     // 计算url

@@ -19,11 +19,14 @@ export type Proxy = string | ProxyConfig | ((req: Req) => Promise<ProxyConfig>)
 
 // 基础上下文
 export interface BaseContext {
+    req?: Req
+    res?: Res
     resolveLink: (...parts: string[]) => string
     followLinks: (urls: Links) => void
     skip: (req: Req) => void
     defer: (req: Req) => void
     stop: () => void
+    sleep: (time: number) => void
 }
 // 可扩展上下文
 export interface DefaultContext {

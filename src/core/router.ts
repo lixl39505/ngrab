@@ -1,3 +1,5 @@
+import EventEmitter from 'events'
+//
 import { AsyncSeriesHook } from 'tapable'
 import minimatch from 'minimatch'
 //
@@ -5,9 +7,9 @@ import { Req, Res, DefaultContext, BaseContext } from './http'
 
 // 生命周期
 export interface Hooks<Context> {
-    request: AsyncSeriesHook<[Req, Context & BaseContext]>
-    download: AsyncSeriesHook<[Req, Res, Context & BaseContext]>
-    fail: AsyncSeriesHook<[Req, Error, Context & BaseContext]>
+    request: AsyncSeriesHook<[Context & BaseContext]>
+    download: AsyncSeriesHook<[Context & BaseContext]>
+    failed: AsyncSeriesHook<[Error, Context & BaseContext]>
 }
 // 路由参数
 export interface RouterOptions<Context> {
@@ -15,22 +17,14 @@ export interface RouterOptions<Context> {
     host?: string // 主机
     port?: string // 端口
     path?: string // 路径
-    success?: (
-        req: Req,
-        res: Res,
-        context: Context & BaseContext
-    ) => Promise<void> // 成功回调
-    fail?: (
-        req: Req,
-        err: Error,
-        context: Context & BaseContext
-    ) => Promise<void> // 失败回调
+    success?: (context: Context & BaseContext) => Promise<void> // 成功回调
+    fail?: (err: Error, context: Context & BaseContext) => Promise<void> // 失败回调
 }
 
 // 路由
 //// 1. url匹配
 //// 2. request生命周期钩子
-export class Router<Context = DefaultContext> {
+export class Router<Context = DefaultContext> extends EventEmitter {
     // 因子
     protected _protocol = ''
     protected _host = ''
@@ -40,22 +34,24 @@ export class Router<Context = DefaultContext> {
     hooks: Hooks<Context>
 
     constructor(options: RouterOptions<Context> = {}) {
+        super()
+
         this._protocol = options.protocal || ''
         this._host = options.host || ''
         this._port = options.port || ''
         this._path = options.path || ''
         // hooks
         this.hooks = {
-            request: new AsyncSeriesHook(['req', 'context']), // 请求前
-            download: new AsyncSeriesHook(['req', 'res', 'context']), // 下载后
-            fail: new AsyncSeriesHook(['req', 'err', 'context']), // 请求失败
+            request: new AsyncSeriesHook(['context']), // 请求前
+            download: new AsyncSeriesHook(['context']), // 下载后
+            failed: new AsyncSeriesHook(['err', 'context']), // 请求失败
         }
         // callback
         if (options.success) {
             this.download('__internalSuccess__', options.success)
         }
         if (options.fail) {
-            this.fail('__internalFail__', options.fail)
+            this.failed('__internalFail__', options.fail)
         }
     }
     // 匹配算法
@@ -89,7 +85,7 @@ export class Router<Context = DefaultContext> {
     // add request hook
     request(
         name: string,
-        fn: (req: Req, context: Context & BaseContext) => Promise<void>
+        fn: (context: Context & BaseContext) => Promise<void>
     ) {
         this.hooks.request.tapPromise(name, fn)
         return this
@@ -97,25 +93,17 @@ export class Router<Context = DefaultContext> {
     // add download hook
     download(
         name: string,
-        fn: (
-            req: Req,
-            res: Res,
-            context: Context & BaseContext
-        ) => Promise<void>
+        fn: (context: Context & BaseContext) => Promise<void>
     ) {
         this.hooks.download.tapPromise(name, fn)
         return this
     }
     // add fail hook
-    fail(
+    failed(
         name: string,
-        fn: (
-            req: Req,
-            err: Error,
-            context: Context & BaseContext
-        ) => Promise<void>
+        fn: (err: Error, context: Context & BaseContext) => Promise<void>
     ) {
-        this.hooks.fail.tapPromise(name, fn)
+        this.hooks.failed.tapPromise(name, fn)
         return this
     }
 }
