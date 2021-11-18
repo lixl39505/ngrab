@@ -260,7 +260,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 }
                 // send
                 let { status, body, headers } = await send(req)
-                context.res = new Res({
+                res = context.res = new Res({
                     status,
                     headers,
                     body,
