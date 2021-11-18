@@ -267,6 +267,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 })
             } catch (err) {
                 // hook:fail 请求失败
+                if (err.res) {
+                    context.res = new Res({
+                        status: err.res.statusCode,
+                        headers: err.res.headers,
+                        body: null,
+                    })
+                }
                 await asyncForEach(
                     routes,
                     async (v) => await v.hooks.failed.promise(err, context)
