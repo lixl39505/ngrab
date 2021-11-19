@@ -393,6 +393,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 休眠
     sleep(time: number) {
         if (time <= 0) return
+        if (this._crawling === false) return
         // 一段时间后再运行
         this.stop()
         setTimeout(() => {

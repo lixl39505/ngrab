@@ -1,9 +1,18 @@
-import EventEmitter from 'events'
+import { TypedEmitter } from 'tiny-typed-emitter'
 //
 import { AsyncSeriesHook } from 'tapable'
 import minimatch from 'minimatch'
 //
 import { Req, Res, DefaultContext, BaseContext } from './http'
+
+// 事件声明
+interface RouterEvents {
+    done: (el: {
+        reqCount: number
+        downloadCount: number
+        failedCount: number
+    }) => void
+}
 
 // 生命周期
 export interface Hooks<Context> {
@@ -24,7 +33,9 @@ export interface RouterOptions<Context> {
 // 路由
 //// 1. url匹配
 //// 2. request生命周期钩子
-export class Router<Context = DefaultContext> extends EventEmitter {
+export class Router<
+    Context = DefaultContext
+> extends TypedEmitter<RouterEvents> {
     // 因子
     protected _protocol = ''
     protected _host = ''
