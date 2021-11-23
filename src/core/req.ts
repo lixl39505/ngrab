@@ -1,8 +1,15 @@
 import { SendOptions } from '../utils/send'
 
+// 请求状态
+export type ReqState =
+    | 'ready' // 已创建完毕
+    | 'pending' // 已加入队列
+    | 'downloading' // 已发送请求
+    | 'failed' // 下载失败
+    | 'download' // 下载成功
 // 请求对象
 export interface ReqOptions extends SendOptions {
-    state?: 'pending' | 'downloading'
+    state?: ReqState
 }
 
 // 请求对象
@@ -21,7 +28,7 @@ class Req {
     // headers
     headers: object
     // 状态
-    state: 'pending' | 'downloading' | 'failed' | 'download'
+    state: ReqState
     // query params
     params: object
     // proxy
@@ -35,7 +42,7 @@ class Req {
         Object.assign(
             this,
             {
-                state: 'pending',
+                state: 'ready',
                 refer: '',
                 retryTimes: 0,
                 maxRetry: 0,

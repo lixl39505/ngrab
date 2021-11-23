@@ -81,7 +81,7 @@ export class Spider<Context = DefaultContext> extends Router<Context> {
                 delete req.params
             }
             // add runtime state
-            req.state = 'pending'
+            req.state = 'ready'
 
             acc.push(new Req(req))
             return acc

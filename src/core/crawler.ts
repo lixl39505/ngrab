@@ -159,16 +159,16 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         // 爬虫已停止
         if (this._crawling === false) return
         // 再无请求
-        let pendings = this._todoList.filter((v) => v.state === 'pending')
-        if (pendings.length <= 0) return
+        let readys = this._todoList.filter((v) => v.state === 'ready')
+        if (readys.length <= 0) return
         // 请求分组，并发执行
-        let group = groupBy<Req>(pendings, (v) => new URL(v.url).hostname)
+        let group = groupBy<Req>(readys, (v) => new URL(v.url).hostname)
         Object.entries<Req[]>(group).forEach(([hostname, list]) => {
             let crawling = this._hostCrawling[hostname]
             if (!crawling) {
                 // lock
                 this._hostCrawling[hostname] = true
-                list.forEach((v) => (v.state = 'downloading'))
+                list.forEach((v) => (v.state = 'pending'))
 
                 this._pushReqs(list, crawling === undefined, () => {
                     // unlock
@@ -245,6 +245,8 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
 
         this._scheduler.push(async () => {
             let res: Res
+            // 请求已发送
+            req.state = 'downloading'
             // hook:request
             await asyncForEach(
                 routes,
@@ -274,6 +276,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                         body: null,
                     })
                 }
+
                 await asyncForEach(
                     routes,
                     async (v) => await v.hooks.failed.promise(err, context)
@@ -389,6 +392,10 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._crawling = false
         this._hostCrawling = {}
         this._scheduler.clear()
+        // 将未发送的请求重置为ready
+        this._todoList.forEach((v) => {
+            if (v.state === 'pending') v.state = 'ready'
+        })
     }
     // 休眠
     sleep(time: number) {
@@ -409,8 +416,8 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     }
     // 延迟失败请求
     defer(req: Req) {
-        // 重置为pending并放入队尾
-        req.state = 'pending'
+        // 重置为ready并放入队尾
+        req.state = 'ready'
         req.retryTimes++
         this._failedCount++ // 请求发送过，所以仍视为失败
         let idx = this._todoList.findIndex((v) => v.url === req.url)

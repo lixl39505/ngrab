@@ -3,7 +3,7 @@ import { customAlphabet } from 'nanoid'
 import { h64 } from 'xxhashjs'
 import UA from 'user-agents'
 //
-import send from './send'
+import { send } from './send'
 
 const ua = new UA({
     platform: 'Win32',
