@@ -1,7 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 //
-import { BloomFilter } from 'bloom-filters'
+import { CuckooFilter } from 'bloom-filters'
+import { SyncHook, AsyncSeriesHook } from 'tapable'
 //
 import {
     Links,
@@ -21,6 +22,11 @@ export interface BloomOptions {
     size?: number // 目标个数
     falseRate?: number // 错误率
 }
+// 布隆JSON对象
+export interface BloomJSON {
+    _seed: number
+}
+
 // 配置参数
 export interface CrawlerOptions<Context = DefaultContext>
     extends SchedulerOptions,
@@ -40,6 +46,10 @@ export interface CrawlerOptions<Context = DefaultContext>
     // 是否记忆爬取进度
     remember?: boolean
 }
+// Crawler生命周期
+export interface CrawlerHooks<Context> {
+    beforeFollow: SyncHook<[Req[]]>
+}
 
 // 爬虫簇
 //// 1. url管理
@@ -58,8 +68,8 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 内部状态
     private _cacheDir: string
     private _scheduler: Scheduler
-    private _bloomFilter: BloomFilter
-    private _bloomJSON: Object
+    private _bloomJSON: BloomJSON
+    private _bloomSeed: number
     private _crawling = false // 正在爬取
     private _todoPath = '' // 待爬取缓存路径
     private _todoList: Array<Req> = [] // 待爬取队列
@@ -71,6 +81,9 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     private _reqCount: number = 0 // 请求总数
     private _downloadCount: number = 0 // 成功请求数
     private _failedCount: number = 0 // 失败请求数
+    // 公开对象
+    crawlerHooks: CrawlerHooks<Context>
+    bloomFilter: CuckooFilter // 布隆过滤器
     // 内部方法
     private _saveBloom: Function
     private _saveTodoList = () => {}
@@ -85,6 +98,10 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._maxConcurrency = options.maxConcurrency
         this._maxRequests = options.maxRequests
         this._remember = options.remember
+        // crawler-hooks
+        this.crawlerHooks = {
+            beforeFollow: new SyncHook(['reqs']), // followLink前
+        }
         // 默认记忆爬取进度
         if (this._remember === undefined) {
             this._remember = true
@@ -100,14 +117,15 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         // 布隆过滤
         let bloom = options.bloom
         if (bloom === true) {
-            // 默认配置，百万条/50MB±
+            // 默认配置，十万条
             this._bloom = {
-                size: 1000000,
-                falseRate: 1 / 1000000,
+                size: 100000,
+                falseRate: 1 / 100000,
             }
             // 缓存bloom过滤器
             this._saveBloom = debounce(200, () => {
-                this._bloomJSON = this._bloomFilter.saveAsJSON()
+                this._bloomJSON = this.bloomFilter.saveAsJSON() as BloomJSON
+                this._bloomJSON._seed = this._bloomSeed // bugfix 防止默认json缺失_seed字段
                 fs.writeFileSync(
                     path.join(this._cacheDir, 'bloom.json'),
                     JSON.stringify(this._bloomJSON)
@@ -232,7 +250,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                     let follows = this.normalizeUrls(urls)
                     // 记录refer
                     follows.forEach((v) => (v.refer = req.url))
-                    this._followLinks(follows)
+                    return this._followLinks(follows)
                 },
                 skip: (req: Req) => this.skip(req),
                 defer: (req: Req) => this.defer(req),
@@ -244,13 +262,14 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         routes.unshift(this)
 
         this._scheduler.push(async () => {
-            let res: Res
+            let res: Res, failError
+
             // 请求已发送
             req.state = 'downloading'
             // hook:request
             await asyncForEach(
                 routes,
-                async (v) => await v.hooks.request.promise(context)
+                async (v) => await v.requestHooks.request.promise(context)
             )
             // start
             try {
@@ -268,7 +287,8 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                     body,
                 })
             } catch (err) {
-                // hook:fail 请求失败
+                // sendError
+                failError = err
                 if (err.res) {
                     context.res = new Res({
                         status: err.res.statusCode,
@@ -276,10 +296,11 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                         body: null,
                     })
                 }
-
+                // hook:fail 请求失败
                 await asyncForEach(
                     routes,
-                    async (v) => await v.hooks.failed.promise(err, context)
+                    async (v) =>
+                        await v.requestHooks.failed.promise(err, context)
                 )
             }
             // success
@@ -287,16 +308,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 // hook:download
                 await asyncForEach(
                     routes,
-                    async (v) => await v.hooks.download.promise(context)
+                    async (v) => await v.requestHooks.download.promise(context)
                 )
-                // complete
-                req.state = 'download'
-                this._downloadCount++
-                this._commit(req)
+                this._complete(req)
             } else {
-                // 默认skip
+                // fail hook 未处理，默认抛出
                 if (req.state === 'downloading') {
-                    this.skip(req)
+                    throw failError
                 }
             }
             // done
@@ -317,8 +335,8 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 提交请求
     private _commit(req: Req) {
         // set bloom-filter
-        if (this._bloomFilter) {
-            this._bloomFilter.add(req.url)
+        if (this.bloomFilter) {
+            this.bloomFilter.add(req.url)
             this._saveBloom()
         }
         // remove from todo-list
@@ -330,10 +348,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
     }
     // 添加请求
     private _followLinks(reqs: Req[], immediate: Boolean = false) {
+        // hook:before-follow
+        this.crawlerHooks.beforeFollow.call(reqs)
+
         // url布隆去重
-        if (this._bloomFilter) {
+        if (this.bloomFilter) {
             reqs = reqs.filter((v) => {
-                return this._bloomFilter.has(v.url) === false
+                return this.bloomFilter.has(v.url) === false
             })
         }
         // 加入队列
@@ -342,6 +363,13 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         if (immediate) {
             this._apply()
         }
+    }
+    // 完成请求
+    private _complete(req: Req) {
+        // complete
+        req.state = 'download'
+        this._downloadCount++
+        this._commit(req)
     }
     // 开始
     run() {
@@ -366,13 +394,15 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
                 this._bloomJSON = JSON.parse(
                     fs.readFileSync(bloomCache, 'utf8')
                 )
-                this._bloomFilter = BloomFilter.fromJSON(this._bloomJSON)
+                this._bloomSeed = this._bloomJSON._seed
+                this.bloomFilter = CuckooFilter.fromJSON(this._bloomJSON)
             } else {
-                this._bloomFilter = BloomFilter.create(
+                this.bloomFilter = CuckooFilter.create(
                     this._bloom.size,
                     this._bloom.falseRate
                 )
-                this._bloomJSON = this._bloomFilter.saveAsJSON()
+                this._bloomJSON = this.bloomFilter.saveAsJSON() as BloomJSON
+                this._bloomSeed = this._bloomJSON._seed
             }
         }
         // 还原todoList
@@ -447,5 +477,10 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         this._spiders.push(spider)
 
         return spider
+    }
+    // add before-follow hook
+    beforeFollow(name: string, fn: (reqs: Req[]) => void) {
+        this.crawlerHooks.beforeFollow.tap(name, fn)
+        return this
     }
 }

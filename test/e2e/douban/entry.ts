@@ -197,35 +197,35 @@ describe('entry', function () {
 
                 let typeRankMap = dbRoot.put.firstCall.lastArg
                 typeRankMap.should.eql({
-                    11: '剧情',
-                    24: '喜剧',
-                    5: '动作',
-                    13: '爱情',
-                    17: '科幻',
-                    25: '动画',
-                    10: '悬疑',
-                    19: '惊悚',
-                    20: '恐怖',
-                    1: '纪录片',
-                    23: '短片',
-                    6: '情色',
-                    26: '同性',
-                    14: '音乐',
-                    7: '歌舞',
-                    28: '家庭',
-                    8: '儿童',
-                    2: '传记',
-                    4: '历史',
-                    22: '战争',
-                    3: '犯罪',
-                    27: '西部',
-                    16: '奇幻',
-                    15: '冒险',
-                    12: '灾难',
-                    29: '武侠',
-                    30: '古装',
-                    18: '运动',
-                    31: '黑色电影',
+                    1: '纪录片', // https://movie.douban.com/j/chart/top_list?type=1&interval_id=10%3A0&action=&start=200&limit=20
+                    2: '传记', // https://movie.douban.com/j/chart/top_list?type=2&interval_id=10%3A0&action=&start=120&limit=20
+                    3: '犯罪', // https://movie.douban.com/j/chart/top_list?type=3&interval_id=10%3A0&action=&start=320&limit=20
+                    4: '历史', // https://movie.douban.com/j/chart/top_list?type=4&interval_id=10%3A0&action=&start=120&limit=20
+                    5: '动作', // https://movie.douban.com/j/chart/top_list?type=5&interval_id=10%3A0&action=&start=360&limit=20
+                    6: '情色', // https://movie.douban.com/j/chart/top_list?type=6&interval_id=10%3A0&action=&start=80&limit=20
+                    7: '歌舞', // https://movie.douban.com/j/chart/top_list?type=7&interval_id=10%3A0&action=&start=60&limit=20
+                    8: '儿童', // https://movie.douban.com/j/chart/top_list?type=8&interval_id=10%3A0&action=&start=&limit=20
+                    10: '悬疑', // https://movie.douban.com/j/chart/top_list?type=10&interval_id=10%3A0&action=&start=220&limit=20
+                    11: '剧情', // https://movie.douban.com/j/chart/top_list?type=11&interval_id=10%3A0&action=&start=800&limit=20
+                    12: '灾难', // https://movie.douban.com/j/chart/top_list?type=12&interval_id=10%3A0&action=&start=20&limit=20
+                    13: '爱情', // https://movie.douban.com/j/chart/top_list?type=13&interval_id=10%3A0&action=&start=420&limit=20
+                    14: '音乐', // https://movie.douban.com/j/chart/top_list?type=14&interval_id=10%3A0&action=&start=80&limit=20
+                    15: '冒险', //？ 
+                    16: '奇幻', // https://movie.douban.com/j/chart/top_list?type=16&interval_id=10%3A0&action=&start=200&limit=20
+                    17: '科幻', // https://movie.douban.com/j/chart/top_list?type=17&interval_id=10%3A0&action=&start=160&limit=20
+                    18: '运动', // https://movie.douban.com/j/chart/top_list?type=18&interval_id=10%3A0&action=&start=60&limit=20
+                    19: '惊悚', // https://movie.douban.com/j/chart/top_list?type=19&interval_id=10%3A0&action=&start=340&limit=20
+                    20: '恐怖', //? 
+                    22: '战争', // https://movie.douban.com/j/chart/top_list?type=22&interval_id=10%3A0&action=&start=120&limit=20
+                    23: '短片', // https://movie.douban.com/j/chart/top_list?type=23&interval_id=10%3A0&action=&start=260&limit=20
+                    24: '喜剧', // https://movie.douban.com/j/chart/top_list?type=24&interval_id=10%3A0&action=&start=580&limit=20
+                    25: '动画', // https://movie.douban.com/j/chart/top_list?type=25&interval_id=10%3A0&action=&start=140&limit=20
+                    26: '同性', // https://movie.douban.com/j/chart/top_list?type=26&interval_id=10%3A0&action=&start=120&limit=20
+                    27: '西部', // https://movie.douban.com/j/chart/top_list?type=27&interval_id=10%3A0&action=&start=40&limit=20
+                    28: '家庭', // https://movie.douban.com/j/chart/top_list?type=28&interval_id=10%3A0&action=&start=160&limit=20
+                    29: '武侠', // https://movie.douban.com/j/chart/top_list?type=29&interval_id=10%3A0&action=&start=40&limit=20
+                    30: '古装', // https://movie.douban.com/j/chart/top_list?type=30&interval_id=10%3A0&action=&start=80&limit=20
+                    31: '黑色电影', // https://movie.douban.com/j/chart/top_list?type=31&interval_id=10%3A0&action=&start=20&limit=20
                 })
                 done()
             } catch (err) {

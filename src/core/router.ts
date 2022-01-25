@@ -14,8 +14,8 @@ interface RouterEvents {
     }) => void
 }
 
-// 生命周期
-export interface Hooks<Context> {
+// 请求生命周期
+export interface RequestHooks<Context> {
     request: AsyncSeriesHook<[Context & BaseContext]>
     download: AsyncSeriesHook<[Context & BaseContext]>
     failed: AsyncSeriesHook<[Error, Context & BaseContext]>
@@ -42,7 +42,7 @@ export class Router<
     protected _port = ''
     protected _path = ''
     // 状态
-    hooks: Hooks<Context>
+    requestHooks: RequestHooks<Context>
 
     constructor(options: RouterOptions<Context> = {}) {
         super()
@@ -51,8 +51,8 @@ export class Router<
         this._host = options.host || ''
         this._port = options.port || ''
         this._path = options.path || ''
-        // hooks
-        this.hooks = {
+        // requestHooks
+        this.requestHooks = {
             request: new AsyncSeriesHook(['context']), // 请求前
             download: new AsyncSeriesHook(['context']), // 下载后
             failed: new AsyncSeriesHook(['err', 'context']), // 请求失败
@@ -98,7 +98,7 @@ export class Router<
         name: string,
         fn: (context: Context & BaseContext) => Promise<void>
     ) {
-        this.hooks.request.tapPromise(name, fn)
+        this.requestHooks.request.tapPromise(name, fn)
         return this
     }
     // add download hook
@@ -106,7 +106,7 @@ export class Router<
         name: string,
         fn: (context: Context & BaseContext) => Promise<void>
     ) {
-        this.hooks.download.tapPromise(name, fn)
+        this.requestHooks.download.tapPromise(name, fn)
         return this
     }
     // add fail hook
@@ -114,7 +114,7 @@ export class Router<
         name: string,
         fn: (err: Error, context: Context & BaseContext) => Promise<void>
     ) {
-        this.hooks.failed.tapPromise(name, fn)
+        this.requestHooks.failed.tapPromise(name, fn)
         return this
     }
 }
