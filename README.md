@@ -17,7 +17,7 @@ A lightweight node spider. Supports:
 import { Crawler, userAgent } from 'ngrab'
 import cheerio from 'cheerio'
 
-// init
+// For example, crawling the hottest projects on Github
 let crawler = new Crawler({
     // required && unique
     name: 'myCrawler',
@@ -31,10 +31,11 @@ let crawler = new Crawler({
 
 // download(name, cb)
 crawler.download('trending', async ({ req, res, followLinks, resolveLink }) => {
+    if (!res) return
     // parsing HTML strings
     let $ = cheerio.load(res.body.toString())
     // extract data
-    let repoList = [],
+    let repoList: Array<{ name: string; href: string }> = [],
         $rows = $('.Box-row')
     if ($rows.length) {
         $rows.each(function (index) {
@@ -45,15 +46,13 @@ crawler.download('trending', async ({ req, res, followLinks, resolveLink }) => {
                     .text()
                     .replace(/\s+/g, ' ')
                     .trim(),
-                href: $('.lh-condensed a', $item).attr('href'),
+                href: $('.lh-condensed a', $item).attr('href') as string,
             })
-
-            repoList.push(rank)
         })
         // print
         console.log(repoList) // or store in your Database
         // follow links
-        rankList.forEach((v) => followLinks(resolveLink(v.href)))
+        // repoList.forEach((v) => followLinks(resolveLink(v.href)))
     }
 })
 
