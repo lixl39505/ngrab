@@ -26,8 +26,8 @@ export interface RouterOptions<Context> {
     host?: string // 主机
     port?: string // 端口
     path?: string // 路径
-    success?: (context: Context & BaseContext) => Promise<void> // 成功回调
-    fail?: (err: Error, context: Context & BaseContext) => Promise<void> // 失败回调
+    download?: (context: Context & BaseContext) => Promise<void> // 成功回调
+    failed?: (err: Error, context: Context & BaseContext) => Promise<void> // 失败回调
 }
 
 // 路由
@@ -58,11 +58,11 @@ export class Router<
             failed: new AsyncSeriesHook(['err', 'context']), // 请求失败
         }
         // callback
-        if (options.success) {
-            this.download('__internalSuccess__', options.success)
+        if (options.download) {
+            this.download('__download__', options.download)
         }
-        if (options.fail) {
-            this.failed('__internalFail__', options.fail)
+        if (options.failed) {
+            this.failed('__failed__', options.failed)
         }
     }
     // 匹配算法

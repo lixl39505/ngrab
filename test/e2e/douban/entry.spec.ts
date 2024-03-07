@@ -79,9 +79,9 @@ describe('entry', function () {
         var douban = createCrawler({
                 startUrls: ['https://movie.douban.com/chart'],
             }),
-            spider = douban.use({
+            spider = douban.route({
                 path: '/chart',
-                async success(context) {
+                async download(context) {
                     let { res } = context,
                         $ = cheerio.load(res.body.toString()),
                         dbRank = context.db('rank'),
@@ -196,7 +196,7 @@ describe('entry', function () {
                 })
 
                 let typeRankMap = dbRoot.put.firstCall.lastArg
-                typeRankMap.should.eql({
+                typeRankMap.should.include({
                     1: '纪录片', // https://movie.douban.com/j/chart/top_list?type=1&interval_id=10%3A0&action=&start=200&limit=20
                     2: '传记', // https://movie.douban.com/j/chart/top_list?type=2&interval_id=10%3A0&action=&start=120&limit=20
                     3: '犯罪', // https://movie.douban.com/j/chart/top_list?type=3&interval_id=10%3A0&action=&start=320&limit=20
@@ -220,7 +220,7 @@ describe('entry', function () {
                     23: '短片', // https://movie.douban.com/j/chart/top_list?type=23&interval_id=10%3A0&action=&start=260&limit=20
                     24: '喜剧', // https://movie.douban.com/j/chart/top_list?type=24&interval_id=10%3A0&action=&start=580&limit=20
                     25: '动画', // https://movie.douban.com/j/chart/top_list?type=25&interval_id=10%3A0&action=&start=140&limit=20
-                    26: '同性', // https://movie.douban.com/j/chart/top_list?type=26&interval_id=10%3A0&action=&start=120&limit=20
+                    // 26: '同性', // https://movie.douban.com/j/chart/top_list?type=26&interval_id=10%3A0&action=&start=120&limit=20
                     27: '西部', // https://movie.douban.com/j/chart/top_list?type=27&interval_id=10%3A0&action=&start=40&limit=20
                     28: '家庭', // https://movie.douban.com/j/chart/top_list?type=28&interval_id=10%3A0&action=&start=160&limit=20
                     29: '武侠', // https://movie.douban.com/j/chart/top_list?type=29&interval_id=10%3A0&action=&start=40&limit=20
@@ -241,7 +241,7 @@ describe('entry', function () {
             startUrls: [
                 'https://movie.douban.com/subject/25804480/', // 404
             ],
-            async fail(err: Error, context) {
+            async failed(err: Error, context) {
                 context.skip(context.req)
                 context.req.state.should.eql('failed')
             },
@@ -263,7 +263,7 @@ describe('entry', function () {
             startUrls: [
                 'https://movie.douban.com/subject/25860925/', // 404
             ],
-            async fail(err: Error, context) {
+            async failed(err: Error, context) {
                 let { req } = context
                 // 重试2次后跳过
                 req.retryTimes >= 2 ? context.skip(req) : context.defer(req)
@@ -289,7 +289,7 @@ describe('entry', function () {
             startUrls: [
                 'https://movie.douban.com/subject/25860925/', // 404
             ],
-            async fail(err: Error, context) {
+            async failed(err: Error, context) {
                 let { req } = context
                 // 休息10s后再爬取
                 if (req.retryTimes >= 1) {

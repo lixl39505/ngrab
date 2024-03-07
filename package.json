@@ -1,7 +1,7 @@
 {
     "name": "ngrab",
-    "version": "0.0.1",
-    "description": "node lightweight crawler framework",
+    "version": "1.0.0",
+    "description": "A lightweight node spider",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "files": [
@@ -11,6 +11,7 @@
         "dev": "tsc --watch & ts-cleaner --watch",
         "prod": "tsc -p ./tsconfig.prod.json --watch & ts-cleaner --watch",
         "build": "tsc -p ./tsconfig.prod.json & ts-cleaner",
+        "lint": "tsc --noEmit & tsc --noEmit -p test/tsconfig.json",
         "test": "mocha",
         "test:debug": "mocha --inspect-brk",
         "patch": "npm version patch && npm publish",
@@ -22,7 +23,8 @@
     "keywords": [
         "crawler",
         "spider",
-        "node"
+        "node",
+        "lightweight"
     ],
     "author": "pixelsLee",
     "license": "MIT",

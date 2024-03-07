@@ -56,8 +56,8 @@ export interface CrawlerHooks<Context> {
 //// 2. 并发管理(请求发起)
 export class Crawler<Context = DefaultContext> extends Spider<Context> {
     // 因子
-    protected _name: string
-    protected _cacheRoot: string
+    protected _name: string // .ngrab/{name}
+    protected _cacheRoot: string // 默认 .ngrab
     protected _bloom: BloomOptions
     protected _startUrls: Links
     protected _interval: number | ((req: Req) => number)
@@ -112,7 +112,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         }
         // 默认缓存目录
         if (!this._cacheRoot) {
-            this._cacheRoot = '.crawlers'
+            this._cacheRoot = '.ngrab'
         }
         // 布隆过滤
         let bloom = options.bloom
@@ -462,7 +462,7 @@ export class Crawler<Context = DefaultContext> extends Spider<Context> {
         return this._cacheDir
     }
     // 添加route
-    use(options: Spider<Context> | SpiderOptions<Context>): Spider<Context> {
+    route(options: Spider<Context> | SpiderOptions<Context>): Spider<Context> {
         if (this._useSet.has(options)) {
             return
         }
