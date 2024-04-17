@@ -26,7 +26,6 @@
         "node",
         "lightweight"
     ],
-    "author": "pixelsLee",
     "license": "MIT",
     "devDependencies": {
         "@types/chai": "^4.2.21",
