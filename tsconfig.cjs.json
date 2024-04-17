@@ -1,6 +1,7 @@
 {
     "extends": "./tsconfig",
     "compilerOptions": {
+        "skipLibCheck": true,
         "declaration": true
     }
 }

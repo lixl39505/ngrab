@@ -8,6 +8,7 @@ declare global {
     const should: Chai.Should
     const except: Chai.ExpectStatic
 }
+
 Object.assign(global, {
     should: chai.should(),
     except: chai.expect,

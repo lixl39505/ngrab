@@ -2,13 +2,5 @@
     "trailingComma": "es5",
     "tabWidth": 4,
     "semi": false,
-    "singleQuote": true,
-    "overrides": [
-        {
-            "files": "*.wxml",
-            "options": {
-                "embeddedLanguageFormatting": "off"
-            }
-        }
-    ]
+    "singleQuote": true
 }

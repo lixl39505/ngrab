@@ -1,9 +1,9 @@
 {
     "include": ["src/**/*"],
     "compilerOptions": {
-        "target": "ES2018",
+        "target": "es2020",
         "module": "commonjs",
-        "outDir": "dist",
+        "outDir": "lib",
         "sourceMap": true, // 支持debug
         "allowJs": true,
         "esModuleInterop": true
